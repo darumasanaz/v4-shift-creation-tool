@@ -27,6 +27,7 @@ type ShiftGenerationResponse = {
   status: string;
   shifts?: GeneratedShifts;
   message?: string;
+  shortages?: string[];
 };
 
 type InitialData = {
@@ -51,6 +52,8 @@ export default function HomePage() {
     null
   );
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [shortageInfo, setShortageInfo] = useState<string[]>([]);
+  const [hasSuccessfulGeneration, setHasSuccessfulGeneration] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<Person | null>(null);
 
@@ -193,16 +196,22 @@ export default function HomePage() {
     });
     setGeneratedShifts(null);
     setGenerationError(null);
+    setShortageInfo([]);
+    setHasSuccessfulGeneration(false);
   };
 
   const handleGenerateShifts = async () => {
     if (!calendarData || !baseShiftData) {
       setGenerationError("シフトを作成できませんでした。");
+      setShortageInfo([]);
+      setHasSuccessfulGeneration(false);
       return;
     }
 
     setIsGenerating(true);
     setGenerationError(null);
+    setShortageInfo([]);
+    setHasSuccessfulGeneration(false);
 
     try {
       const payload = {
@@ -228,18 +237,24 @@ export default function HomePage() {
       }
 
       const result: ShiftGenerationResponse = await response.json();
+      const shortages = Array.isArray(result.shortages) ? result.shortages : [];
+      setShortageInfo(shortages);
 
       if (result.status === "success" && result.shifts) {
         setGeneratedShifts(result.shifts);
         setGenerationError(null);
+        setHasSuccessfulGeneration(true);
       } else {
         setGeneratedShifts(null);
         setGenerationError("シフトを作成できませんでした。");
+        setHasSuccessfulGeneration(false);
       }
     } catch (error) {
       console.error(error);
       setGeneratedShifts(null);
       setGenerationError("シフトを作成できませんでした。");
+      setShortageInfo([]);
+      setHasSuccessfulGeneration(false);
     } finally {
       setIsGenerating(false);
     }
@@ -313,6 +328,20 @@ export default function HomePage() {
                 {generationError}
               </p>
             )}
+            <section style={{ marginTop: "1.5rem" }}>
+              <h3>シフトの問題点</h3>
+              {shortageInfo.length > 0 ? (
+                <ul style={{ paddingLeft: "1.25rem" }}>
+                  {shortageInfo.map((item, index) => (
+                    <li key={`${item}-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : (
+                hasSuccessfulGeneration && !generationError && (
+                  <p>全ての条件を満たしました！</p>
+                )
+              )}
+            </section>
           </section>
           {calendarData ? (
             <section>
