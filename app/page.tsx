@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react";
 
 import Calendar from "../components/Calendar";
+import StaffEditModal, {
+  type StaffEditModalPerson,
+  type StaffEditModalSavePayload,
+} from "../components/StaffEditModal";
 
-type Person = {
-  id: string;
+export type Person = StaffEditModalPerson & {
   [key: string]: unknown;
 };
 
@@ -42,14 +45,14 @@ export default function HomePage() {
   const [calendarData, setCalendarData] = useState<CalendarData | null>(null);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [wishOffs, setWishOffs] = useState<WishOffs>({});
-  const [baseShiftData, setBaseShiftData] = useState<Record<string, unknown> | null>(
-    null
-  );
+  const [baseShiftData, setBaseShiftData] = useState<InitialData | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedShifts, setGeneratedShifts] = useState<GeneratedShifts | null>(
     null
   );
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<Person | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -141,8 +144,34 @@ export default function HomePage() {
     };
   }, []);
 
-  const handleSelectStaff = (personId: string) => {
-    setSelectedStaffId(personId);
+  const handleOpenEditModal = (person: Person) => {
+    setEditingStaff(person);
+    setSelectedStaffId(person.id);
+    setIsEditModalOpen(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditModalOpen(false);
+    setEditingStaff(null);
+  };
+
+  const handleSaveStaff = (updatedPerson: StaffEditModalSavePayload) => {
+    setPeople((previous) => {
+      const nextPeople = previous.map((person) =>
+        person.id === updatedPerson.id ? { ...person, ...updatedPerson } : person
+      );
+      setBaseShiftData((previousBase) =>
+        previousBase ? { ...previousBase, people: nextPeople } : previousBase
+      );
+      return nextPeople;
+    });
+    setSelectedStaffId(updatedPerson.id);
+    setEditingStaff((current) =>
+      current && current.id === updatedPerson.id
+        ? { ...current, ...updatedPerson }
+        : current
+    );
+    setIsEditModalOpen(false);
   };
 
   const handleRegisterWishOff = (day: number) => {
@@ -239,7 +268,7 @@ export default function HomePage() {
                     <li key={person.id} style={{ marginBottom: "0.5rem" }}>
                       <button
                         type="button"
-                        onClick={() => handleSelectStaff(person.id)}
+                        onClick={() => handleOpenEditModal(person)}
                         style={{
                           width: "100%",
                           textAlign: "left",
@@ -306,6 +335,12 @@ export default function HomePage() {
           )}
         </>
       )}
+      <StaffEditModal
+        isOpen={isEditModalOpen}
+        person={editingStaff}
+        onSave={handleSaveStaff}
+        onCancel={handleCancelEdit}
+      />
     </main>
   );
 }
