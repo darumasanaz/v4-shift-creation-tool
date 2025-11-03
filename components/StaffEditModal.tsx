@@ -1,267 +1,139 @@
-import { useEffect, useMemo, useState } from "react";
+// components/StaffEditModal.tsx
+import React, { useState, useEffect } from 'react';
 
-export type StaffEditModalPerson = {
+// Define the shape of the staff data
+interface Person {
   id: string;
-  canWork?: string[] | null;
-  monthlyMin?: number | null;
-  monthlyMax?: number | null;
-  weeklyMax?: number | null;
-  consecMax?: number | null;
-  [key: string]: unknown;
-};
-
-export type StaffEditModalSavePayload = StaffEditModalPerson & {
   canWork: string[];
-  monthlyMin?: number | null;
-  monthlyMax?: number | null;
-  weeklyMax?: number | null;
-  consecMax?: number | null;
-};
+  monthlyMin: number;
+  monthlyMax: number;
+  weeklyMax: number;
+  consecMax: number;
+}
 
-type StaffEditModalProps = {
-  isOpen: boolean;
-  person: StaffEditModalPerson | null;
-  onSave: (updatedPerson: StaffEditModalSavePayload) => void;
-  onCancel: () => void;
-};
+// Define the shape of the props this component receives
+interface StaffEditModalProps {
+  staff: Person;
+  onClose: () => void;
+  onSave: (updatedStaff: Person) => void;
+}
 
-const fieldLabelStyle: React.CSSProperties = {
-  display: "block",
-  marginBottom: "0.25rem",
-  fontWeight: 600,
-};
+const StaffEditModal: React.FC<StaffEditModalProps> = ({ staff, onClose, onSave }) => {
+  // Use state to manage the form data, initialized with the staff prop
+  const [formData, setFormData] = useState({
+    ...staff,
+    canWork: staff.canWork.join(', '), // Convert array to comma-separated string for input field
+  });
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "0.5rem",
-  borderRadius: "0.375rem",
-  border: "1px solid #d1d5db",
-  fontSize: "0.95rem",
-};
-
-export default function StaffEditModal({
-  isOpen,
-  person,
-  onSave,
-  onCancel,
-}: StaffEditModalProps) {
-  const [canWorkInput, setCanWorkInput] = useState("");
-  const [monthlyMinInput, setMonthlyMinInput] = useState("");
-  const [monthlyMaxInput, setMonthlyMaxInput] = useState("");
-  const [weeklyMaxInput, setWeeklyMaxInput] = useState("");
-  const [consecMaxInput, setConsecMaxInput] = useState("");
-
+  // Effect to update form data if the staff prop changes
   useEffect(() => {
-    if (!isOpen || !person) {
-      return;
-    }
+    setFormData({
+      ...staff,
+      canWork: staff.canWork.join(', '),
+    });
+  }, [staff]);
 
-    setCanWorkInput(
-      Array.isArray(person.canWork) ? person.canWork.join(", ") : ""
-    );
-    setMonthlyMinInput(
-      person.monthlyMin !== undefined && person.monthlyMin !== null
-        ? String(person.monthlyMin)
-        : ""
-    );
-    setMonthlyMaxInput(
-      person.monthlyMax !== undefined && person.monthlyMax !== null
-        ? String(person.monthlyMax)
-        : ""
-    );
-    setWeeklyMaxInput(
-      person.weeklyMax !== undefined && person.weeklyMax !== null
-        ? String(person.weeklyMax)
-        : ""
-    );
-    setConsecMaxInput(
-      person.consecMax !== undefined && person.consecMax !== null
-        ? String(person.consecMax)
-        : ""
-    );
-  }, [isOpen, person]);
-
-  const modalTitle = useMemo(() => {
-    if (!person) {
-      return "スタッフ情報";
-    }
-    return `${person.id} のスタッフ情報`;
-  }, [person]);
-
-  if (!isOpen || !person) {
-    return null;
-  }
-
-  const parseNumber = (value: string, fallback: number | null | undefined) => {
-    const trimmed = value.trim();
-    if (trimmed === "") {
-      return undefined;
-    }
-    const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed)) {
-      return fallback;
-    }
-    return parsed;
+  // Handle changes in form inputs
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const normalizedCanWork = canWorkInput
-      .split(",")
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-
-    const updatedPerson: StaffEditModalSavePayload = {
-      ...person,
-      canWork: normalizedCanWork,
-      monthlyMin: parseNumber(monthlyMinInput, person.monthlyMin),
-      monthlyMax: parseNumber(monthlyMaxInput, person.monthlyMax),
-      weeklyMax: parseNumber(weeklyMaxInput, person.weeklyMax),
-      consecMax: parseNumber(consecMaxInput, person.consecMax),
+  // Handle the save action
+  const handleSave = () => {
+    // Prepare the data to be saved
+    const updatedStaff: Person = {
+      ...formData,
+      // Convert numeric string inputs back to numbers
+      monthlyMin: Number(formData.monthlyMin) || 0,
+      monthlyMax: Number(formData.monthlyMax) || 0,
+      weeklyMax: Number(formData.weeklyMax) || 0,
+      consecMax: Number(formData.consecMax) || 0,
+      // Convert comma-separated string back to an array of strings
+      canWork: formData.canWork.split(',').map(s => s.trim()).filter(Boolean),
     };
-
-    onSave(updatedPerson);
+    onSave(updatedStaff);
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="staff-edit-modal-title"
-      style={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "rgba(0, 0, 0, 0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "1rem",
-        zIndex: 1000,
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: "#ffffff",
-          borderRadius: "0.75rem",
-          padding: "1.5rem",
-          width: "min(32rem, 100%)",
-          boxShadow: "0 10px 25px rgba(15, 23, 42, 0.15)",
-        }}
-      >
-        <h2 id="staff-edit-modal-title" style={{ marginBottom: "1rem" }}>
-          {modalTitle}
-        </h2>
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: "1rem" }}>
-            <label htmlFor="staff-can-work" style={fieldLabelStyle}>
-              勤務可能シフト
-            </label>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+        <h2 className="text-2xl font-bold mb-6">「{staff.id}」さんの情報を編集</h2>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">勤務可能シフト (カンマ区切り)</label>
             <input
-              id="staff-can-work"
               type="text"
-              value={canWorkInput}
-              onChange={(event) => setCanWorkInput(event.target.value)}
-              placeholder="例: EA, DA, NA"
-              style={inputStyle}
+              name="canWork"
+              value={formData.canWork}
+              onChange={handleChange}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-          <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "1fr 1fr" }}>
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="staff-monthly-min" style={fieldLabelStyle}>
-                月間勤務日数 下限
-              </label>
+              <label className="block text-sm font-medium text-gray-700">月間勤務日数 (下限)</label>
               <input
-                id="staff-monthly-min"
                 type="number"
-                inputMode="numeric"
-                value={monthlyMinInput}
-                onChange={(event) => setMonthlyMinInput(event.target.value)}
-                style={inputStyle}
-                min={0}
+                name="monthlyMin"
+                value={formData.monthlyMin}
+                onChange={handleChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
             <div>
-              <label htmlFor="staff-monthly-max" style={fieldLabelStyle}>
-                月間勤務日数 上限
-              </label>
+              <label className="block text-sm font-medium text-gray-700">月間勤務日数 (上限)</label>
               <input
-                id="staff-monthly-max"
                 type="number"
-                inputMode="numeric"
-                value={monthlyMaxInput}
-                onChange={(event) => setMonthlyMaxInput(event.target.value)}
-                style={inputStyle}
-                min={0}
-              />
-            </div>
-            <div>
-              <label htmlFor="staff-weekly-max" style={fieldLabelStyle}>
-                週間勤務日数 上限
-              </label>
-              <input
-                id="staff-weekly-max"
-                type="number"
-                inputMode="numeric"
-                value={weeklyMaxInput}
-                onChange={(event) => setWeeklyMaxInput(event.target.value)}
-                style={inputStyle}
-                min={0}
-              />
-            </div>
-            <div>
-              <label htmlFor="staff-consec-max" style={fieldLabelStyle}>
-                最大連続勤務日数
-              </label>
-              <input
-                id="staff-consec-max"
-                type="number"
-                inputMode="numeric"
-                value={consecMaxInput}
-                onChange={(event) => setConsecMaxInput(event.target.value)}
-                style={inputStyle}
-                min={0}
+                name="monthlyMax"
+                value={formData.monthlyMax}
+                onChange={handleChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
           </div>
-          <div
-            style={{
-              marginTop: "1.5rem",
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: "0.75rem",
-            }}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">週間勤務日数 (上限)</label>
+              <input
+                type="number"
+                name="weeklyMax"
+                value={formData.weeklyMax}
+                onChange={handleChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">最大連勤日数</label>
+              <input
+                type="number"
+                name="consecMax"
+                value={formData.consecMax}
+                onChange={handleChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 flex justify-end space-x-4">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
           >
-            <button
-              type="button"
-              onClick={onCancel}
-              style={{
-                padding: "0.5rem 1.25rem",
-                borderRadius: "9999px",
-                border: "1px solid #d1d5db",
-                backgroundColor: "#ffffff",
-                cursor: "pointer",
-              }}
-            >
-              キャンセル
-            </button>
-            <button
-              type="submit"
-              style={{
-                padding: "0.5rem 1.25rem",
-                borderRadius: "9999px",
-                border: "none",
-                backgroundColor: "#2563eb",
-                color: "#ffffff",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              保存
-            </button>
-          </div>
-        </form>
+            キャンセル
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            保存する
+          </button>
+        </div>
       </div>
     </div>
   );
-}
+};
+
+export default StaffEditModal;
