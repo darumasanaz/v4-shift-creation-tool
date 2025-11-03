@@ -42,10 +42,10 @@ export default function Home() {
   const [initialData, setInitialData] = useState<InitialData | null>(null);
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
   const [wishOffs, setWishOffs] = useState<{ [personId: string]: number[] }>({});
-
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
-
+  
   const [generatedShifts, setGeneratedShifts] = useState<GeneratedShifts | null>(null);
   const [shortageInfo, setShortageInfo] = useState<Shortage[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -118,26 +118,15 @@ export default function Home() {
     }
   };
 
-  const handleSaveStaff = (updatedStaffData: any) => {
+  const handleSaveStaff = (updatedStaff: Person) => {
     if (!initialData) return;
-
-    // Person型に合うようにデータを整形・検証
-    const updatedStaff: Person = {
-      ...updatedStaffData,
-      id: updatedStaffData.id,
-      canWork: Array.isArray(updatedStaffData.canWork) ? updatedStaffData.canWork : [],
-      monthlyMin: Number(updatedStaffData.monthlyMin || 0),
-      monthlyMax: Number(updatedStaffData.monthlyMax || 0),
-      weeklyMax: Number(updatedStaffData.weeklyMax || 0),
-      consecMax: Number(updatedStaffData.consecMax || 0),
-    };
-
-    const updatedPeople = initialData.people.map(p =>
+    const updatedPeople = initialData.people.map(p => 
       p.id === updatedStaff.id ? updatedStaff : p
     );
     setInitialData({ ...initialData, people: updatedPeople });
     setEditingStaff(null);
   };
+
 
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center">ローディング中...</div>;
@@ -150,7 +139,7 @@ export default function Home() {
   return (
     <main className="container mx-auto p-8">
       <h1 className="text-4xl font-bold mb-8">シフト作成ツール v4</h1>
-
+      
       <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
         <div className="md:col-span-1">
           <h2 className="text-2xl font-semibold mb-4">スタッフ一覧</h2>
@@ -180,7 +169,7 @@ export default function Home() {
             >
               {isGenerating ? '作成中...' : 'シフトを作成する'}
             </button>
-
+            
             <div className="mt-4 text-center">
               {errorMessage && <p className="text-red-500 font-semibold">{errorMessage}</p>}
               {shortageInfo.length > 0 && (
@@ -213,7 +202,7 @@ export default function Home() {
           />
         </div>
       </div>
-
+      
       {editingStaff && (
         <StaffEditModal
           staff={editingStaff}
