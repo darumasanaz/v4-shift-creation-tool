@@ -305,7 +305,9 @@ def _solve_shift(data: Dict) -> Dict:
 @app.post("/api/generate-shift")
 def generate_shift(shift_input: ShiftInput):
     try:
-        return _solve_shift(shift_input.dict())
+        response_data = _solve_shift(shift_input.dict())
+        print(f"DEBUG: Returning response data: {response_data}")
+        return response_data
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"サーバーエラー: {exc}")
 
