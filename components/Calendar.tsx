@@ -1,132 +1,109 @@
-import React from "react";
+import React from 'react';
 
-export type CalendarProps = {
+// 型定義
+interface ShiftData {
+  [shiftCode: string]: string[];
+}
+
+interface GeneratedShifts {
+  [day: string]: ShiftData;
+}
+
+interface WishOffs {
+  [personId: string]: number[];
+}
+
+interface Shortage {
+  date: number;
+  time_range: string;
+  shortage_count: number;
+}
+
+interface CalendarProps {
   year: number;
   month: number;
-  days: number;
-  weekdayOfDay1: number;
-  wishOffs: Record<string, number[]>;
-  selectedStaffId: string | null;
-  onSelectDate: (day: number) => void;
-  generatedShifts?: Record<string, Record<string, string[]>>;
-};
-
-const dayLabels = ["日", "月", "火", "水", "木", "金", "土"];
+  daysInMonth: number;
+  firstDayOfWeek: number;
+  wishOffs: WishOffs;
+  selectedStaff: string | null;
+  onDayClick: (day: number) => void;
+  generatedShifts: GeneratedShifts | null;
+}
 
 const Calendar: React.FC<CalendarProps> = ({
-  days,
-  weekdayOfDay1,
+  year,
+  month,
+  daysInMonth,
+  firstDayOfWeek,
   wishOffs,
-  selectedStaffId,
-  onSelectDate,
+  selectedStaff,
+  onDayClick,
   generatedShifts,
 }) => {
-  const leadingEmptyCells = ((weekdayOfDay1 % 7) + 7) % 7;
-  const totalCells = Math.ceil((leadingEmptyCells + days) / 7) * 7;
-  const cells: Array<number | null> = Array.from({ length: totalCells }, (_, index) => {
-    const dayNumber = index - leadingEmptyCells + 1;
-    return dayNumber > 0 && dayNumber <= days ? dayNumber : null;
-  });
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
-  const rows = Array.from({ length: cells.length / 7 }, (_, rowIndex) =>
-    cells.slice(rowIndex * 7, rowIndex * 7 + 7)
-  );
+  const blanks = Array(firstDayOfWeek).fill(null);
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  const getWishOffsForDay = (day: number) => {
+    return Object.entries(wishOffs)
+      .filter(([_, dates]) => dates.includes(day))
+      .map(([personId, _]) => personId);
+  };
 
   return (
-    <table>
-      <thead>
-        <tr>
-          {dayLabels.map((label) => (
-            <th key={label}>{label}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, rowIndex) => (
-          <tr key={`row-${rowIndex}`}>
-            {row.map((cell, cellIndex) => {
-              if (cell === null) {
-                return (
-                  <td
-                    key={`cell-${rowIndex}-${cellIndex}`}
-                    style={{ border: "1px solid #d1d5db" }}
-                  />
-                );
-              }
-
-              const wishers = Object.entries(wishOffs)
-                .filter(([, daysOfStaff]) => daysOfStaff.includes(cell))
-                .map(([staffId]) => staffId);
-
-              const isSelectedStaffWish =
-                selectedStaffId !== null && wishers.includes(selectedStaffId);
-
-              const backgroundColor = isSelectedStaffWish
-                ? "#bfdbfe"
-                : wishers.length > 0
-                ? "#fef3c7"
-                : undefined;
-
-              const assignmentsForDay = generatedShifts?.[String(cell)] ?? {};
-              const shiftEntries = Object.entries(assignmentsForDay);
-
-              const handleClick = () => {
-                if (selectedStaffId) {
-                  onSelectDate(cell);
-                }
-              };
-
-              return (
-                <td
-                  key={`cell-${rowIndex}-${cellIndex}`}
-                  onClick={handleClick}
-                  style={{
-                    cursor: selectedStaffId ? "pointer" : "not-allowed",
-                    padding: "0.5rem",
-                    verticalAlign: "top",
-                    border: "1px solid #d1d5db",
-                    backgroundColor,
-                    opacity: selectedStaffId ? 1 : 0.6,
-                  }}
-                >
-                  <div style={{ fontWeight: "bold" }}>{cell}</div>
-                  {wishers.length > 0 && (
-                    <div
-                      style={{
-                        marginTop: "0.25rem",
-                        fontSize: "0.75rem",
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {wishers.join(", ")}
-                    </div>
-                  )}
-                  {shiftEntries.length > 0 && (
-                    <div
-                      style={{
-                        marginTop: "0.5rem",
-                        fontSize: "0.75rem",
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {shiftEntries.map(([shiftCode, staffIds]) => (
-                        <div key={shiftCode}>
-                          {`${shiftCode}: ${
-                            staffIds && staffIds.length > 0
-                              ? staffIds.join("・")
-                              : "未割当"
-                          }`}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </td>
-              );
-            })}
-          </tr>
+    <div className="mt-8">
+      <h2 className="text-2xl font-bold text-center mb-4">{`${year}年${month}月`}</h2>
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {weekdays.map((day) => (
+          <div key={day} className="font-bold p-2 bg-gray-200 rounded-t-lg">
+            {day}
+          </div>
         ))}
-      </tbody>
-    </table>
+        {blanks.map((_, index) => (
+          <div key={`blank-${index}`} className="border rounded-lg" style={{ minHeight: '120px' }}></div>
+        ))}
+        {days.map((day) => {
+          const dayWishes = getWishOffsForDay(day);
+          // ここからが重要な修正
+          const dayShifts = generatedShifts ? generatedShifts[day.toString()] : null;
+
+          return (
+            <div
+              key={day}
+              className="border rounded-lg p-2 flex flex-col cursor-pointer hover:bg-blue-100 transition-colors"
+              style={{ minHeight: '120px' }}
+              onClick={() => onDayClick(day)}
+            >
+              <div className="font-bold self-start">{day}</div>
+              <div className="flex-grow text-xs text-left mt-1">
+                {/* 希望休の表示 */}
+                {dayWishes.length > 0 && (
+                  <div className="bg-yellow-200 p-1 rounded mb-1">
+                    <div className="font-semibold text-yellow-800">希望休:</div>
+                    {dayWishes.map((name) => (
+                      <div key={name}>{name}</div>
+                    ))}
+                  </div>
+                )}
+                {/* 生成されたシフトの表示 (ここからが重要な修正) */}
+                {dayShifts && Object.keys(dayShifts).length > 0 && (
+                   <div className="bg-green-200 p-1 rounded">
+                     {Object.entries(dayShifts).map(([shiftCode, people]) => (
+                       <div key={shiftCode}>
+                         <span className="font-semibold text-green-800">{shiftCode}:</span>
+                         {/* 配列をカンマ区切りで表示 */}
+                         <span>{people.join(', ')}</span>
+                       </div>
+                     ))}
+                   </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 };
 
