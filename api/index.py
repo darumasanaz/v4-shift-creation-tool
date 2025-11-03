@@ -46,6 +46,11 @@ def get_initial_data():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"サーバーエラー: {str(e)}")
 
+def _parse_time_range(range_key: str) -> tuple[int, int]:
+    start_str, end_str = range_key.split("-")
+    return int(start_str.strip()), int(end_str.strip())
+
+
 def _build_solver(data: Dict) -> tuple[cp_model.CpModel, Dict]:
     model = cp_model.CpModel()
 
@@ -53,6 +58,14 @@ def _build_solver(data: Dict) -> tuple[cp_model.CpModel, Dict]:
     shift_codes: List[str] = [shift["code"] for shift in data["shifts"]]
     people: List[Dict] = data["people"]
     first_weekday: int = data.get("weekdayOfDay1", 0) % 7
+
+    shift_time_map: Dict[str, Dict[str, int]] = {
+        shift["code"]: {
+            "start": int(shift.get("start", 0)),
+            "end": int(shift.get("end", 0)),
+        }
+        for shift in data.get("shifts", [])
+    }
 
     weekday_map = {"日": 0, "月": 1, "火": 2, "水": 3, "木": 4, "金": 5, "土": 6}
 
@@ -162,12 +175,81 @@ def _build_solver(data: Dict) -> tuple[cp_model.CpModel, Dict]:
                         <= 1
                     )
 
+    need_template: Dict[str, Dict[str, int]] = data.get("needTemplate", {})
+    day_types: List[str] = data.get("dayTypeByDate", [])
+
+    shortage_details: List[Dict] = []
+    shortage_vars: List[cp_model.IntVar] = []
+
+    def _overlaps(start_a: int, end_a: int, start_b: int, end_b: int) -> bool:
+        return max(start_a, start_b) < min(end_a, end_b)
+
+    for day in range(days):
+        day_type = day_types[day] if day < len(day_types) else None
+        requirements = need_template.get(day_type, {}) if day_type else {}
+
+        for time_key, required in requirements.items():
+            try:
+                time_start, time_end = _parse_time_range(time_key)
+            except ValueError:
+                continue
+
+            required_int = int(required)
+            if required_int < 0:
+                continue
+
+            shortage_var = model.NewIntVar(
+                0,
+                required_int,
+                f"shortage_d{day}_t{time_start}_{time_end}",
+            )
+
+            coverage_terms = []
+            for person_index in range(len(people)):
+                for shift_code in shift_codes:
+                    shift_times = shift_time_map.get(shift_code, {"start": 0, "end": 0})
+                    shift_start = shift_times["start"]
+                    shift_end = shift_times["end"]
+
+                    same_day_end = min(shift_end, 24)
+                    if _overlaps(shift_start, same_day_end, time_start, time_end):
+                        coverage_terms.append(
+                            assignments[(day, shift_code, person_index)]
+                        )
+
+                    if day > 0 and shift_end > 24:
+                        next_day_start = max(0, shift_start - 24)
+                        next_day_end = shift_end - 24
+                        if _overlaps(next_day_start, next_day_end, time_start, time_end):
+                            coverage_terms.append(
+                                assignments[(day - 1, shift_code, person_index)]
+                            )
+
+            coverage_expr = sum(coverage_terms) if coverage_terms else 0
+
+            model.Add(shortage_var >= required_int - coverage_expr)
+            shortage_details.append(
+                {
+                    "day": day,
+                    "time_range": time_key,
+                    "required": required_int,
+                    "var": shortage_var,
+                }
+            )
+            shortage_vars.append(shortage_var)
+
+    if shortage_vars:
+        model.Minimize(sum(shortage_vars))
+    else:
+        model.Minimize(0)
+
     return model, {
         "assignments": assignments,
         "works_day": works_day,
         "people": people,
         "shift_codes": shift_codes,
         "days": days,
+        "shortage_details": shortage_details,
     }
 
 
@@ -179,30 +261,45 @@ def _solve_shift(data: Dict) -> Dict:
 
     status = solver.Solve(model)
 
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return {
-            "status": "error",
-            "message": "解決可能なシフトが見つかりませんでした。",
-        }
-
     assignments = context["assignments"]
     people = context["people"]
     shift_codes = context["shift_codes"]
     days = context["days"]
 
     result: Dict[str, Dict[str, List[str]]] = {}
-    for day in range(days):
-        day_key = str(day + 1)
-        result[day_key] = {}
-        for shift_code in shift_codes:
-            staff_for_shift = [
-                people[person_index]["id"]
-                for person_index in range(len(people))
-                if solver.Value(assignments[(day, shift_code, person_index)]) == 1
-            ]
-            result[day_key][shift_code] = staff_for_shift
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        for day in range(days):
+            day_key = str(day + 1)
+            result[day_key] = {}
+            for shift_code in shift_codes:
+                staff_for_shift = [
+                    people[person_index]["id"]
+                    for person_index in range(len(people))
+                    if solver.Value(assignments[(day, shift_code, person_index)]) == 1
+                ]
+                result[day_key][shift_code] = staff_for_shift
 
-    return {"status": "success", "shifts": result}
+    shortages_output: List[Dict] = []
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        for detail in context.get("shortage_details", []):
+            shortage_value = solver.Value(detail["var"])
+            if shortage_value > 0:
+                shortages_output.append(
+                    {
+                        "date": detail["day"] + 1,
+                        "time_range": detail["time_range"],
+                        "shortage_count": shortage_value,
+                    }
+                )
+
+    solver_status_name = solver.StatusName(status)
+
+    return {
+        "status": "success",
+        "solver_status": solver_status_name,
+        "shifts": result,
+        "shortages": shortages_output,
+    }
 
 
 @app.post("/api/generate-shift")
