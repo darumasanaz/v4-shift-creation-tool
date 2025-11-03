@@ -18,6 +18,14 @@ type CalendarData = {
 
 type WishOffs = Record<string, number[]>;
 
+type GeneratedShifts = Record<string, Record<string, string[]>>;
+
+type ShiftGenerationResponse = {
+  status: string;
+  shifts?: GeneratedShifts;
+  message?: string;
+};
+
 type InitialData = {
   people?: Person[];
   year?: number;
@@ -34,6 +42,14 @@ export default function HomePage() {
   const [calendarData, setCalendarData] = useState<CalendarData | null>(null);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [wishOffs, setWishOffs] = useState<WishOffs>({});
+  const [baseShiftData, setBaseShiftData] = useState<Record<string, unknown> | null>(
+    null
+  );
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedShifts, setGeneratedShifts] = useState<GeneratedShifts | null>(
+    null
+  );
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -79,6 +95,8 @@ export default function HomePage() {
             return {};
           });
 
+          setBaseShiftData(data);
+
           const isValidNumber = (value: unknown): value is number =>
             typeof value === "number" && Number.isFinite(value);
 
@@ -105,6 +123,9 @@ export default function HomePage() {
           setCalendarData(null);
           setSelectedStaffId(null);
           setWishOffs({});
+          setBaseShiftData(null);
+          setGeneratedShifts(null);
+          setGenerationError("シフトを作成できませんでした。");
         }
       } finally {
         if (isMounted) {
@@ -141,7 +162,62 @@ export default function HomePage() {
         [selectedStaffId]: updatedDays,
       };
     });
+    setGeneratedShifts(null);
+    setGenerationError(null);
   };
+
+  const handleGenerateShifts = async () => {
+    if (!calendarData || !baseShiftData) {
+      setGenerationError("シフトを作成できませんでした。");
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerationError(null);
+
+    try {
+      const payload = {
+        ...(baseShiftData ?? {}),
+        year: calendarData.year,
+        month: calendarData.month,
+        days: calendarData.days,
+        weekdayOfDay1: calendarData.weekdayOfDay1,
+        people,
+        wishOffs,
+      };
+
+      const response = await fetch("/api/generate-shift", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to generate shifts: ${response.status}`);
+      }
+
+      const result: ShiftGenerationResponse = await response.json();
+
+      if (result.status === "success" && result.shifts) {
+        setGeneratedShifts(result.shifts);
+        setGenerationError(null);
+      } else {
+        setGeneratedShifts(null);
+        setGenerationError("シフトを作成できませんでした。");
+      }
+    } catch (error) {
+      console.error(error);
+      setGeneratedShifts(null);
+      setGenerationError("シフトを作成できませんでした。");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const isGenerateDisabled =
+    isGenerating || !calendarData || !baseShiftData || people.length === 0;
 
   return (
     <main>
@@ -185,6 +261,30 @@ export default function HomePage() {
               </ul>
             )}
           </section>
+          <section style={{ margin: "1.5rem 0" }}>
+            <button
+              type="button"
+              onClick={handleGenerateShifts}
+              disabled={isGenerateDisabled}
+              style={{
+                padding: "0.75rem 1.5rem",
+                borderRadius: "0.5rem",
+                border: "none",
+                backgroundColor: isGenerateDisabled ? "#9ca3af" : "#2563eb",
+                color: "#ffffff",
+                fontSize: "1rem",
+                fontWeight: "bold",
+                cursor: isGenerateDisabled ? "not-allowed" : "pointer",
+              }}
+            >
+              {isGenerating ? "シフトを作成中..." : "シフトを作成する"}
+            </button>
+            {generationError && (
+              <p role="alert" style={{ marginTop: "0.75rem", color: "#dc2626" }}>
+                {generationError}
+              </p>
+            )}
+          </section>
           {calendarData ? (
             <section>
               <h2>
@@ -195,6 +295,7 @@ export default function HomePage() {
                 wishOffs={wishOffs}
                 selectedStaffId={selectedStaffId}
                 onSelectDate={handleRegisterWishOff}
+                generatedShifts={generatedShifts ?? undefined}
               />
             </section>
           ) : (

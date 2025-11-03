@@ -8,6 +8,7 @@ export type CalendarProps = {
   wishOffs: Record<string, number[]>;
   selectedStaffId: string | null;
   onSelectDate: (day: number) => void;
+  generatedShifts?: Record<string, Record<string, string[]>>;
 };
 
 const dayLabels = ["日", "月", "火", "水", "木", "金", "土"];
@@ -18,6 +19,7 @@ const Calendar: React.FC<CalendarProps> = ({
   wishOffs,
   selectedStaffId,
   onSelectDate,
+  generatedShifts,
 }) => {
   const leadingEmptyCells = ((weekdayOfDay1 % 7) + 7) % 7;
   const totalCells = Math.ceil((leadingEmptyCells + days) / 7) * 7;
@@ -65,6 +67,9 @@ const Calendar: React.FC<CalendarProps> = ({
                 ? "#fef3c7"
                 : undefined;
 
+              const assignmentsForDay = generatedShifts?.[String(cell)] ?? {};
+              const shiftEntries = Object.entries(assignmentsForDay);
+
               const handleClick = () => {
                 if (selectedStaffId) {
                   onSelectDate(cell);
@@ -94,6 +99,25 @@ const Calendar: React.FC<CalendarProps> = ({
                       }}
                     >
                       {wishers.join(", ")}
+                    </div>
+                  )}
+                  {shiftEntries.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: "0.5rem",
+                        fontSize: "0.75rem",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {shiftEntries.map(([shiftCode, staffIds]) => (
+                        <div key={shiftCode}>
+                          {`${shiftCode}: ${
+                            staffIds && staffIds.length > 0
+                              ? staffIds.join("・")
+                              : "未割当"
+                          }`}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </td>
