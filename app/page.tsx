@@ -1,375 +1,215 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useState, useEffect } from 'react';
+import Calendar from '../components/Calendar';
+import StaffEditModal from '../components/StaffEditModal';
 
-import Calendar from "../components/Calendar";
-import StaffEditModal, {
-  type StaffEditModalPerson,
-  type StaffEditModalSavePayload,
-} from "../components/StaffEditModal";
+// 型定義
+interface Person {
+  id: string;
+  canWork: string[];
+  monthlyMin: number;
+  monthlyMax: number;
+  weeklyMax: number;
+  consecMax: number;
+  // 他のプロパティも必要に応じて追加
+}
 
-export type Person = StaffEditModalPerson & {
-  [key: string]: unknown;
-};
-
-type CalendarData = {
+interface InitialData {
   year: number;
   month: number;
   days: number;
   weekdayOfDay1: number;
-};
+  people: Person[];
+  wishOffs: { [personId: string]: number[] };
+  // 他のプロパティも網羅的に定義
+  [key: string]: any;
+}
 
-type WishOffs = Record<string, number[]>;
+interface GeneratedShifts {
+  [day: string]: {
+    [shiftCode: string]: string[];
+  };
+}
 
-type GeneratedShifts = Record<string, Record<string, string[]>>;
+interface Shortage {
+  date: number;
+  time_range: string;
+  shortage_count: number;
+}
 
-type ShiftGenerationResponse = {
-  status: string;
-  shifts?: GeneratedShifts;
-  message?: string;
-  shortages?: string[];
-};
-
-type InitialData = {
-  people?: Person[];
-  year?: number;
-  month?: number;
-  days?: number;
-  weekdayOfDay1?: number;
-  wishOffs?: unknown;
-  [key: string]: unknown;
-};
-
-export default function HomePage() {
+export default function Home() {
+  const [initialData, setInitialData] = useState<InitialData | null>(null);
+  const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
+  const [wishOffs, setWishOffs] = useState<{ [personId: string]: number[] }>({});
+  
   const [isLoading, setIsLoading] = useState(true);
-  const [people, setPeople] = useState<Person[]>([]);
-  const [calendarData, setCalendarData] = useState<CalendarData | null>(null);
-  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
-  const [wishOffs, setWishOffs] = useState<WishOffs>({});
-  const [baseShiftData, setBaseShiftData] = useState<InitialData | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedShifts, setGeneratedShifts] = useState<GeneratedShifts | null>(
-    null
-  );
-  const [generationError, setGenerationError] = useState<string | null>(null);
-  const [shortageInfo, setShortageInfo] = useState<string[]>([]);
-  const [hasSuccessfulGeneration, setHasSuccessfulGeneration] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  
+  const [generatedShifts, setGeneratedShifts] = useState<GeneratedShifts | null>(null);
+  const [shortageInfo, setShortageInfo] = useState<Shortage[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string>('');
+
+  // 編集モーダル用のstate
   const [editingStaff, setEditingStaff] = useState<Person | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
-
-    const fetchInitialData = async () => {
-      try {
-        const response = await fetch("/api/initial-data");
-        if (!response.ok) {
-          throw new Error(`Failed to fetch initial data: ${response.status}`);
-        }
-
-        const data: InitialData = await response.json();
-        if (isMounted) {
-          const nextPeople = Array.isArray(data.people) ? data.people : [];
-          setPeople(nextPeople);
-          setSelectedStaffId((current) => {
-            if (current && nextPeople.some((person) => person.id === current)) {
-              return current;
-            }
-            return nextPeople.length > 0 ? nextPeople[0].id : null;
-          });
-
-          const isWishOffsRecord = (value: unknown): value is WishOffs => {
-            if (!value || typeof value !== "object") {
-              return false;
-            }
-
-            return Object.entries(value).every(([key, days]) => {
-              if (typeof key !== "string" || !Array.isArray(days)) {
-                return false;
-              }
-
-              return days.every(
-                (day) => typeof day === "number" && Number.isInteger(day)
-              );
-            });
-          };
-
-          setWishOffs(() => {
-            if (isWishOffsRecord(data.wishOffs)) {
-              return data.wishOffs;
-            }
-            return {};
-          });
-
-          setBaseShiftData(data);
-
-          const isValidNumber = (value: unknown): value is number =>
-            typeof value === "number" && Number.isFinite(value);
-
-          if (
-            isValidNumber(data.year) &&
-            isValidNumber(data.month) &&
-            isValidNumber(data.days) &&
-            isValidNumber(data.weekdayOfDay1)
-          ) {
-            setCalendarData({
-              year: data.year,
-              month: data.month,
-              days: data.days,
-              weekdayOfDay1: data.weekdayOfDay1,
-            });
-          } else {
-            setCalendarData(null);
-          }
-        }
-      } catch (error) {
-        console.error(error);
-        if (isMounted) {
-          setPeople([]);
-          setCalendarData(null);
-          setSelectedStaffId(null);
-          setWishOffs({});
-          setBaseShiftData(null);
-          setGeneratedShifts(null);
-          setGenerationError("シフトを作成できませんでした。");
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fetchInitialData();
-
-    return () => {
-      isMounted = false;
-    };
+    fetch('/api/initial-data')
+      .then(res => res.json())
+      .then(data => {
+        setInitialData(data);
+        setWishOffs(data.wishOffs || {});
+        setIsLoading(false);
+      })
+      .catch(error => {
+        console.error("Failed to fetch initial data:", error);
+        setErrorMessage("初期データの読み込みに失敗しました。");
+        setIsLoading(false);
+      });
   }, []);
 
-  const handleOpenEditModal = (person: Person) => {
-    setEditingStaff(person);
-    setSelectedStaffId(person.id);
-    setIsEditModalOpen(true);
-  };
-
-  const handleCancelEdit = () => {
-    setIsEditModalOpen(false);
-    setEditingStaff(null);
-  };
-
-  const handleSaveStaff = (updatedPerson: StaffEditModalSavePayload) => {
-    setPeople((previous) => {
-      const nextPeople = previous.map((person) =>
-        person.id === updatedPerson.id ? { ...person, ...updatedPerson } : person
-      );
-      setBaseShiftData((previousBase) =>
-        previousBase ? { ...previousBase, people: nextPeople } : previousBase
-      );
-      return nextPeople;
-    });
-    setSelectedStaffId(updatedPerson.id);
-    setEditingStaff((current) =>
-      current && current.id === updatedPerson.id
-        ? { ...current, ...updatedPerson }
-        : current
-    );
-    setIsEditModalOpen(false);
-  };
-
-  const handleRegisterWishOff = (day: number) => {
-    setWishOffs((previous) => {
-      if (!selectedStaffId) {
-        return previous;
-      }
-
-      const existingDays = previous[selectedStaffId] ?? [];
-      if (existingDays.includes(day)) {
-        return previous;
-      }
-
-      const updatedDays = [...existingDays, day].sort((a, b) => a - b);
-      return {
-        ...previous,
-        [selectedStaffId]: updatedDays,
-      };
-    });
-    setGeneratedShifts(null);
-    setGenerationError(null);
-    setShortageInfo([]);
-    setHasSuccessfulGeneration(false);
-  };
-
-  const handleGenerateShifts = async () => {
-    if (!calendarData || !baseShiftData) {
-      setGenerationError("シフトを作成できませんでした。");
-      setShortageInfo([]);
-      setHasSuccessfulGeneration(false);
+  const handleDayClick = (day: number) => {
+    if (!selectedStaff) {
+      alert('先にスタッフを選択してください。');
       return;
     }
+    setWishOffs(prev => {
+      const currentWishes = prev[selectedStaff] || [];
+      const newWishes = currentWishes.includes(day)
+        ? currentWishes.filter(d => d !== day)
+        : [...currentWishes, day];
+      return { ...prev, [selectedStaff]: newWishes };
+    });
+  };
 
+  const handleGenerateShift = async () => {
+    if (!initialData) return;
     setIsGenerating(true);
-    setGenerationError(null);
+    setErrorMessage('');
     setShortageInfo([]);
-    setHasSuccessfulGeneration(false);
+    setGeneratedShifts(null);
+
+    const payload = { ...initialData, wishOffs };
 
     try {
-      const payload = {
-        ...(baseShiftData ?? {}),
-        year: calendarData.year,
-        month: calendarData.month,
-        days: calendarData.days,
-        weekdayOfDay1: calendarData.weekdayOfDay1,
-        people,
-        wishOffs,
-      };
-
-      const response = await fetch("/api/generate-shift", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      const response = await fetch('/api/generate-shift', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to generate shifts: ${response.status}`);
+        throw new Error('サーバーからエラーが返されました。');
       }
 
-      const result: ShiftGenerationResponse = await response.json();
-      const shortages = Array.isArray(result.shortages) ? result.shortages : [];
-      setShortageInfo(shortages);
+      const result = await response.json();
 
-      if (result.status === "success" && result.shifts) {
+      if (result.status === 'success') {
         setGeneratedShifts(result.shifts);
-        setGenerationError(null);
-        setHasSuccessfulGeneration(true);
+        setShortageInfo(result.shortages || []);
       } else {
-        setGeneratedShifts(null);
-        setGenerationError("シフトを作成できませんでした。");
-        setHasSuccessfulGeneration(false);
+        setErrorMessage(result.message || 'シフトを作成できませんでした。');
       }
     } catch (error) {
-      console.error(error);
-      setGeneratedShifts(null);
-      setGenerationError("シフトを作成できませんでした。");
-      setShortageInfo([]);
-      setHasSuccessfulGeneration(false);
+      console.error("Shift generation failed:", error);
+      setErrorMessage('シフト作成中にエラーが発生しました。');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const isGenerateDisabled =
-    isGenerating || !calendarData || !baseShiftData || people.length === 0;
+  const handleSaveStaff = (updatedStaff: Person) => {
+    if (!initialData) return;
+    const updatedPeople = initialData.people.map(p => 
+      p.id === updatedStaff.id ? updatedStaff : p
+    );
+    setInitialData({ ...initialData, people: updatedPeople });
+    setEditingStaff(null);
+  };
+
+
+  if (isLoading) {
+    return <div className="min-h-screen flex items-center justify-center">ローディング中...</div>;
+  }
+
+  if (!initialData) {
+    return <div className="min-h-screen flex items-center justify-center">{errorMessage || "データを読み込めませんでした。"}</div>;
+  }
 
   return (
-    <main>
-      <h1>シフト作成ツール v4</h1>
-      {isLoading ? (
-        <p>ローディング中...</p>
-      ) : (
-        <>
-          <section>
-            <h2>スタッフ一覧</h2>
-            {people.length === 0 ? (
-              <p>スタッフ情報がありません。</p>
-            ) : (
-              <ul style={{ listStyle: "none", padding: 0 }}>
-                {people.map((person) => {
-                  const isSelected = selectedStaffId === person.id;
+    <main className="container mx-auto p-8">
+      <h1 className="text-4xl font-bold mb-8">シフト作成ツール v4</h1>
+      
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="md:col-span-1">
+          <h2 className="text-2xl font-semibold mb-4">スタッフ一覧</h2>
+          <div className="space-y-2">
+            {initialData.people.map(person => (
+              <div
+                key={person.id}
+                onClick={() => setSelectedStaff(person.id)}
+                onDoubleClick={() => setEditingStaff(person)}
+                className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                  selectedStaff === person.id ? 'bg-blue-500 text-white shadow-lg' : 'bg-white hover:bg-gray-100'
+                }`}
+              >
+                {person.id} {selectedStaff === person.id && '(選択中)'}
+              </div>
+            ))}
+          </div>
+           <p className="text-sm text-gray-500 mt-2">※ダブルクリックでスタッフ情報を編集できます。</p>
+        </div>
 
-                  return (
-                    <li key={person.id} style={{ marginBottom: "0.5rem" }}>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditModal(person)}
-                        style={{
-                          width: "100%",
-                          textAlign: "left",
-                          padding: "0.5rem 0.75rem",
-                          borderRadius: "0.5rem",
-                          border: "1px solid",
-                          borderColor: isSelected ? "#2563eb" : "#d1d5db",
-                          backgroundColor: isSelected ? "#dbeafe" : "#ffffff",
-                          cursor: "pointer",
-                          fontWeight: isSelected ? "bold" : "normal",
-                        }}
-                      >
-                        {person.id}
-                        {isSelected && <span style={{ marginLeft: "0.5rem" }}>（選択中）</span>}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-          <section style={{ margin: "1.5rem 0" }}>
+        <div className="md:col-span-3">
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
             <button
-              type="button"
-              onClick={handleGenerateShifts}
-              disabled={isGenerateDisabled}
-              style={{
-                padding: "0.75rem 1.5rem",
-                borderRadius: "0.5rem",
-                border: "none",
-                backgroundColor: isGenerateDisabled ? "#9ca3af" : "#2563eb",
-                color: "#ffffff",
-                fontSize: "1rem",
-                fontWeight: "bold",
-                cursor: isGenerateDisabled ? "not-allowed" : "pointer",
-              }}
+              onClick={handleGenerateShift}
+              disabled={isGenerating}
+              className="w-full px-6 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
             >
-              {isGenerating ? "シフトを作成中..." : "シフトを作成する"}
+              {isGenerating ? '作成中...' : 'シフトを作成する'}
             </button>
-            {generationError && (
-              <p role="alert" style={{ marginTop: "0.75rem", color: "#dc2626" }}>
-                {generationError}
-              </p>
-            )}
-            <section style={{ marginTop: "1.5rem" }}>
-              <h3>シフトの問題点</h3>
-              {shortageInfo.length > 0 ? (
-                <ul style={{ paddingLeft: "1.25rem" }}>
-                  {shortageInfo.map((item, index) => (
-                    <li key={`${item}-${index}`}>{item}</li>
-                  ))}
-                </ul>
-              ) : (
-                hasSuccessfulGeneration && !generationError && (
-                  <p>全ての条件を満たしました！</p>
-                )
+            
+            <div className="mt-4 text-center">
+              {errorMessage && <p className="text-red-500 font-semibold">{errorMessage}</p>}
+              {shortageInfo.length > 0 && (
+                <div>
+                  <h3 className="text-xl font-semibold text-yellow-600 mb-2">シフトの問題点:</h3>
+                  <ul className="list-disc list-inside text-left">
+                    {shortageInfo.map((shortage, i) => (
+                      <li key={i} className="text-yellow-700">
+                        {initialData.month}月{shortage.date}日 {shortage.time_range}: {shortage.shortage_count}人不足
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
-            </section>
-          </section>
-          {calendarData ? (
-            <section>
-              <h2>
-                {calendarData.year}年{calendarData.month}月
-              </h2>
-              <Calendar
-                {...calendarData}
-                wishOffs={wishOffs}
-                selectedStaffId={selectedStaffId}
-                onSelectDate={handleRegisterWishOff}
-                generatedShifts={generatedShifts ?? undefined}
-              />
-            </section>
-          ) : (
-            <section>
-              <h2>カレンダー</h2>
-              <p>カレンダー情報を取得できませんでした。</p>
-            </section>
-          )}
-        </>
+              {generatedShifts && shortageInfo.length === 0 && !errorMessage && (
+                <p className="text-green-600 font-bold text-xl">✓ 全ての条件を満たしました！</p>
+              )}
+            </div>
+          </div>
+
+          <Calendar
+            year={initialData.year}
+            month={initialData.month}
+            daysInMonth={initialData.days}
+            firstDayOfWeek={initialData.weekdayOfDay1}
+            wishOffs={wishOffs}
+            selectedStaff={selectedStaff}
+            onDayClick={handleDayClick}
+            generatedShifts={generatedShifts}
+          />
+        </div>
+      </div>
+      
+      {editingStaff && (
+        <StaffEditModal
+          staff={editingStaff}
+          onClose={() => setEditingStaff(null)}
+          onSave={handleSaveStaff}
+        />
       )}
-      <StaffEditModal
-        isOpen={isEditModalOpen}
-        person={editingStaff}
-        onSave={handleSaveStaff}
-        onCancel={handleCancelEdit}
-      />
     </main>
   );
 }
