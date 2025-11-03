@@ -266,8 +266,10 @@ def _solve_shift(data: Dict) -> Dict:
     shift_codes = context["shift_codes"]
     days = context["days"]
 
+    solver_status_name = solver.StatusName(status)
+
     result: Dict[str, Dict[str, List[str]]] = {}
-    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+    if solver_status_name in {"OPTIMAL", "FEASIBLE", "INFEASIBLE"}:
         for day in range(days):
             day_key = str(day + 1)
             result[day_key] = {}
@@ -280,19 +282,16 @@ def _solve_shift(data: Dict) -> Dict:
                 result[day_key][shift_code] = staff_for_shift
 
     shortages_output: List[Dict] = []
-    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        for detail in context.get("shortage_details", []):
-            shortage_value = solver.Value(detail["var"])
-            if shortage_value > 0:
-                shortages_output.append(
-                    {
-                        "date": detail["day"] + 1,
-                        "time_range": detail["time_range"],
-                        "shortage_count": shortage_value,
-                    }
-                )
-
-    solver_status_name = solver.StatusName(status)
+    for detail in context.get("shortage_details", []):
+        shortage_value = solver.Value(detail["var"])
+        if shortage_value > 0:
+            shortages_output.append(
+                {
+                    "date": detail["day"] + 1,
+                    "time_range": detail["time_range"],
+                    "shortage_count": shortage_value,
+                }
+            )
 
     return {
         "status": "success",
@@ -306,7 +305,6 @@ def _solve_shift(data: Dict) -> Dict:
 def generate_shift(shift_input: ShiftInput):
     try:
         response_data = _solve_shift(shift_input.dict())
-        print(f"DEBUG: Returning response data: {response_data}")
         return response_data
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"サーバーエラー: {exc}")
